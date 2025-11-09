@@ -1,0 +1,14 @@
+timestamp,user_name,user_email,ticket_type,request_id,status,reason
+2025-11-08T07:34:37.335274,Afrane Owusu Agyei,aphranie2003@gmail.com,VIP,75c12bc0-fd1b-49dc-b37f-e340d7ae1df1,confirmed,
+2025-11-08T07:34:39.912510,Afrane Owusu Agyei,aphranie2003@gmail.com,Regular,e6f69b06-f2b9-4aa5-b610-7952e356f14e,confirmed,
+2025-11-08T07:34:42.982271,Afrane Owusu Agyei,aphranie2003@gmail.com,VIP,1ef100b8-6c3f-40aa-9f78-fa329f2a9df6,confirmed,
+2025-11-08T07:34:44.521930,Afrane Owusu Agyei,aphranie2003@gmail.com,Regular,5ff9654b-51ae-4eee-a27c-2f95bee4e463,confirmed,
+2025-11-08T07:57:09.676274,Afrane Owusu Agyei,aphranie2003@gmail.com,VIP,44a88362-0a25-4c61-b10d-31db9964fe49,confirmed,
+2025-11-08T07:57:11.222680,Afrane Owusu Agyei,aphranie2003@gmail.com,Regular,aa572f96-1ac7-4131-b247-1443d33b98ec,confirmed,
+2025-11-08T09:32:38.121377,Afrane Owusu Agyei,aphranie2003@gmail.com,VIP,5ae14da6-c9d1-49dc-ac44-ec5249b2b364,confirmed,
+2025-11-08T19:36:17.077531,Afrane Owusu Agyei,aphranie2003@gmail.com,VIP,b95b3912-1a17-446a-aa64-1c8357764fec,confirmed,
+2025-11-09T00:37:05.502029,Afrane Owusu Agyei,aphranie1096@gmail.com,VIP,3149ab40-0b3b-48ff-9fa9-8dc59ca78fec,confirmed,
+2025-11-09T00:37:22.789299,Afrane Owusu Agyei,aphranie1096@gmail.com,VIP,3149ab40-0b3b-48ff-9fa9-8dc59ca78fec,refunded,user_cancelled
+2025-11-09T00:37:54.975712,Afrane Owusu Agyei,aphranie1096@gmail.com,VIP,90de0b9b-635c-4cf2-bb5f-822ea34baf16,confirmed,
+2025-11-09T01:29:15.799923,Afrane Owusu Agyei,aphranie2003@gmail.com,VIP,f3d11fe7-2c22-4cc9-9abd-00c1cef3d919,confirmed,
+2025-11-09T01:29:25.376462,Afrane Owusu Agyei,aphranie2003@gmail.com,VIP,f3d11fe7-2c22-4cc9-9abd-00c1cef3d919,refunded,user_cancelled

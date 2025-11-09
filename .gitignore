@@ -1,0 +1,18 @@
+# Python
+.venv/
+__pycache__/
+*.pyc
+
+# FastAPI / database
+event_tix.db
+*.sqlite*
+*.db
+
+# Environment files (secrets)
+event_tix/.env
+web/.env
+
+# Frontend build/cache
+web/node_modules/
+web/dist/
+web/.vite/
