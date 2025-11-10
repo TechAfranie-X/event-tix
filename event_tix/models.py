@@ -19,6 +19,7 @@ class User(Base):
     name = Column(String, nullable=False)
     email = Column(String, unique=True, index=True, nullable=False)
     hashed_password = Column(String, nullable=False)
+    role = Column(String, default="user", nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow)
 
 
@@ -34,6 +35,8 @@ class Event(Base):
     ends_at = Column(DateTime, nullable=True)
     category = Column(String, nullable=True, default="General", index=True)
     tags = Column(String, nullable=True)  # CSV string
+    organizer_id = Column(Integer, nullable=True)
+    is_published = Column(Integer, default=1, nullable=False)  # 1=true in SQLite
     created_at = Column(DateTime, default=datetime.utcnow)
 
     ticket_types = relationship("TicketType", back_populates="event", cascade="all, delete-orphan")
@@ -53,24 +56,6 @@ class TicketType(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
 
     event = relationship("Event", back_populates="ticket_types")
-
-
-class PromoCode(Base):
-    __tablename__ = "promo_codes"
-
-    id = Column(Integer, primary_key=True, index=True)
-    event_id = Column(Integer, ForeignKey("events.id"), nullable=False)
-    code = Column(String, unique=True, nullable=False, index=True)
-    type = Column(String, nullable=False)  # 'percent' or 'amount'
-    value_cents = Column(Integer, nullable=True)  # For 'amount' type
-    percent = Column(Integer, nullable=True)  # For 'percent' type (0-100)
-    max_uses = Column(Integer, nullable=True)
-    used_count = Column(Integer, default=0, nullable=False)
-    expires_at = Column(DateTime, nullable=True)
-    applies_to = Column(String, nullable=True)  # CSV of ticket_type names
-    created_at = Column(DateTime, default=datetime.utcnow)
-
-    event = relationship("Event")
 
 
 class Order(Base):

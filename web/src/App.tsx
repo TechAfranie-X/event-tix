@@ -16,6 +16,9 @@ import AdminEventForm from './routes/AdminEventForm';
 import AdminTicketTypes from './routes/AdminTicketTypes';
 import AdminPromos from './routes/AdminPromos';
 import AdminReports from './routes/AdminReports';
+import OrganizerCreate from './routes/OrganizerCreate';
+import OrganizerMyEvents from './routes/OrganizerMyEvents';
+import OrganizerPromos from './pages/OrganizerPromos';
 import './styles.css';
 
 function App() {
@@ -84,6 +87,30 @@ function App() {
             <RequireAdminAuth>
               <AdminReports />
             </RequireAdminAuth>
+          }
+        />
+        <Route
+          path="/organizer/create"
+          element={
+            <RequireAuth>
+              <OrganizerCreate />
+            </RequireAuth>
+          }
+        />
+        <Route
+          path="/organizer/events"
+          element={
+            <RequireAuth>
+              <OrganizerMyEvents />
+            </RequireAuth>
+          }
+        />
+        <Route
+          path="/organizer/promos"
+          element={
+            <RequireAuth>
+              <OrganizerPromos />
+            </RequireAuth>
           }
         />
         <Route path="*" element={<NotFound />} />

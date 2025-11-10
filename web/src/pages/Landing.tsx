@@ -1,10 +1,12 @@
 import { useEffect, useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 import { getJson } from '../lib/api';
+import { formatDateTime } from '../lib/dates';
 
 interface ExternalEvent {
-  source: 'ticketmaster' | 'local';
+  source: 'ticketmaster' | 'seatgeek' | 'local';
   external_id: string | null;
+  id?: number; // Internal ID for local events
   name: string;
   image_url: string | null;
   location: string;
@@ -31,21 +33,6 @@ function getEventImage(event: ExternalEvent): string {
   return getCategoryImage(event.category);
 }
 
-function formatDate(dateStr: string | null): string {
-  if (!dateStr) return 'Date TBD';
-  try {
-    const date = new Date(dateStr);
-    return date.toLocaleDateString('en-US', {
-      month: 'short',
-      day: 'numeric',
-      year: 'numeric',
-      hour: 'numeric',
-      minute: '2-digit'
-    });
-  } catch {
-    return 'Date TBD';
-  }
-}
 
 export default function Landing() {
   const [events, setEvents] = useState<ExternalEvent[]>([]);
@@ -138,36 +125,45 @@ export default function Landing() {
               
               return (
                 <div
-                  key={event.external_id || `event-${index}`}
+                  key={event.external_id || event.id || `event-${index}`}
                   className="event-card"
                 >
-                  <div className="event-card-image">
-                    <img src={eventImage} alt={event.name} />
-                  </div>
-                  <div className="event-card-content">
-                    <span className="event-category-badge">{event.category}</span>
-                    <h3 className="event-card-title">{event.name}</h3>
-                    <p className="event-card-location">📍 {event.location}</p>
-                    <p className="event-card-date">📅 {formatDate(event.starts_at)}</p>
-                    {event.source === 'ticketmaster' && event.url && (
-                      <a
-                        href={event.url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="event-card-link"
-                      >
-                        View on Ticketmaster →
-                      </a>
-                    )}
-                    {event.source === 'local' && event.external_id && (
-                      <Link
-                        to={`/events/${event.external_id}`}
-                        className="event-card-link"
-                      >
-                        View Details →
-                      </Link>
-                    )}
-                  </div>
+                  {isLocal && event.id ? (
+                    <Link to={`/events/${event.id}`} style={{ textDecoration: 'none', color: 'inherit' }}>
+                      <div className="event-card-image">
+                        <img src={eventImage} alt={event.name} />
+                      </div>
+                      <div className="event-card-content">
+                        <span className="event-category-badge">{event.category}</span>
+                        <h3 className="event-card-title">{event.name}</h3>
+                        <p className="event-card-location">📍 {event.location}</p>
+                        <p className="event-card-date">📅 {formatDateTime(event.starts_at)}</p>
+                        <span className="event-card-link">View Details →</span>
+                      </div>
+                    </Link>
+                  ) : (
+                    <>
+                      <div className="event-card-image">
+                        <img src={eventImage} alt={event.name} />
+                      </div>
+                      <div className="event-card-content">
+                        <span className="event-category-badge">{event.category}</span>
+                        <h3 className="event-card-title">{event.name}</h3>
+                        <p className="event-card-location">📍 {event.location}</p>
+                        <p className="event-card-date">📅 {formatDateTime(event.starts_at)}</p>
+                        {(event.source === 'ticketmaster' || event.source === 'seatgeek') && event.url && (
+                          <a
+                            href={event.url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="event-card-link"
+                          >
+                            {event.source === 'ticketmaster' ? 'View on Ticketmaster →' : 'View on SeatGeek →'}
+                          </a>
+                        )}
+                      </div>
+                    </>
+                  )}
                 </div>
               );
             })}

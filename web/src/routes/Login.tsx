@@ -1,7 +1,6 @@
 import { useState, FormEvent } from 'react';
 import { Link } from 'react-router-dom';
 import { postJson } from '../lib/api';
-import { setAuth, User } from '../lib/auth';
 import Toast from '../components/Toast';
 
 export default function Login() {
@@ -18,14 +17,18 @@ export default function Login() {
     try {
       const data = await postJson<{
         access_token: string;
-        user: User;
+        user: any;
       }>('/api/auth/login', { email, password });
-      setAuth(data.access_token, data.user);
+      localStorage.setItem('token', data.access_token);
+      localStorage.setItem('user', JSON.stringify(data.user));
       const params = new URLSearchParams(window.location.search);
       const next = params.get('next');
-      window.location.href = next || '/';
+      // if they're organizer/admin, send them to organizer dashboard by default
+      const u = data.user || {};
+      const fallback = (u.role === 'organizer' || u.role === 'admin') ? '/organizer/events' : '/';
+      window.location.href = next || fallback;
     } catch (err: any) {
-      setError(err.message || 'Login failed');
+      setError(err?.message || 'Login failed');
     } finally {
       setLoading(false);
     }

@@ -1,7 +1,6 @@
 import { Link } from 'react-router-dom';
 import { useEffect, useState, useRef } from 'react';
 import { getJson } from '../lib/api';
-import { getToken, getUser, clearAuth, type User } from '../lib/auth';
 
 interface HealthResponse {
   ok: boolean;
@@ -49,14 +48,16 @@ export default function Nav() {
     };
   }, [showAdminDropdown]);
 
-  const authed = !!getToken();
+  const isAuthed = !!localStorage.getItem('token');
   const adminAuthed = !!localStorage.getItem('admin_token');
-  const user = getUser();
+  const user = JSON.parse(localStorage.getItem('user') || 'null');
+  const organizer = user && (user.role === 'organizer' || user.role === 'admin');
 
-  const onLogout = () => {
-    clearAuth();
+  function logout() {
+    localStorage.removeItem('token');
+    localStorage.removeItem('user');
     window.location.href = '/';
-  };
+  }
 
   const onAdminLogout = () => {
     localStorage.removeItem('admin_token');
@@ -133,12 +134,19 @@ export default function Nav() {
               )}
             </div>
           )}
-          {authed ? (
+          {isAuthed ? (
             <>
               <span className="nav-greeting">Hi, {user?.name}</span>
+              {organizer && (
+                <>
+                  <Link to="/organizer/create">Create</Link>
+                  <Link to="/organizer/events">My Events</Link>
+                  <Link to="/organizer/promos">Promos</Link>
+                </>
+              )}
               <Link to="/orders">Orders</Link>
               <Link to="/scan">Scan</Link>
-              <button onClick={onLogout} className="btn-link">
+              <button onClick={logout} className="btn-link">
                 Logout
               </button>
             </>

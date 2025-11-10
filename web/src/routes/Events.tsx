@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { getJson } from '../lib/api';
 import Toast from '../components/Toast';
+import { formatDateTime } from '../lib/dates';
 
 interface Event {
   id: number;
@@ -110,12 +111,7 @@ export default function Events() {
 
   const formatDate = (dateString: string | null) => {
     if (!dateString) return 'Date TBA';
-    const date = new Date(dateString);
-    return date.toLocaleDateString('en-US', {
-      month: 'short',
-      day: 'numeric',
-      year: 'numeric',
-    });
+    return formatDateTime(dateString);
   };
 
   const formatDateForInput = (dateString: string | null) => {

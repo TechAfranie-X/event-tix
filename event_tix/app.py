@@ -3,7 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, Response
 from fastapi.exceptions import RequestValidationError
 from sqlalchemy.orm import Session
-from sqlalchemy import or_, text
+from sqlalchemy import or_, text, asc
 from contextlib import asynccontextmanager
 import os
 from dotenv import load_dotenv
@@ -14,7 +14,7 @@ from typing import Optional
 from event_tix.db import get_db, init_db, atomic_release_ticket_type
 from event_tix.models import User, Event, TicketType, Order, Ticket, TicketTypeEnum, PromoCode, IdempotencyKey
 from event_tix.schemas import (
-    UserRegister, UserResponse, UserLogin, Token,
+    UserRegister, UserCreate, UserResponse, UserLogin, Token,
     AvailabilityResponse, TicketRequest, TicketRequestResponse,
     QueuePositionResponse, OrderResponse, TicketVerifyResponse, TicketCheckinResponse,
     EventListItem, EventDetail, TicketTypeInfo,
@@ -35,9 +35,13 @@ from event_tix.services.rate_limit_checkout import check_checkout_rate_limit
 from event_tix.services.rate_limit_search import check_search_rate_limit
 import hashlib
 import json
-from event_tix.services.external_events import fetch_ticketmaster_events, get_category_image
 from event_tix.services.logging import log_email, log_transaction
 from event_tix.services.processing import process_one_manual
+from event_tix.services.promos import validate_promo, redeem_promo
+from event_tix.routes.organizer import router as organizer_router
+from event_tix.routes.external import router as external_router
+from event_tix.routes.promos import router as promos_router
+from event_tix.util.dates import ensure_utc
 from datetime import timedelta
 import asyncio
 
@@ -75,6 +79,11 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Include routers
+app.include_router(organizer_router)
+app.include_router(external_router)
+app.include_router(promos_router)
+
 
 # Global exception handlers
 @app.exception_handler(HTTPException)
@@ -106,7 +115,7 @@ async def general_exception_handler(request: Request, exc: Exception):
 
 # Auth routes
 @app.post("/api/auth/register", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
-def register(user_data: UserRegister, db: Session = Depends(get_db)):
+def register(user_data: UserCreate, db: Session = Depends(get_db)):
     # Check if user exists
     existing_user = db.query(User).filter(User.email == user_data.email).first()
     if existing_user:
@@ -115,12 +124,16 @@ def register(user_data: UserRegister, db: Session = Depends(get_db)):
             detail="Email already registered"
         )
     
+    # Clamp role to valid values
+    role = user_data.role if user_data.role in ("user", "organizer", "admin") else "user"
+    
     # Create user
     hashed_password = get_password_hash(user_data.password)
     user = User(
         name=user_data.name,
         email=user_data.email,
-        hashed_password=hashed_password
+        hashed_password=hashed_password,
+        role=role
     )
     db.add(user)
     db.commit()
@@ -147,7 +160,7 @@ def login(credentials: UserLogin, db: Session = Depends(get_db)):
     return {
         "access_token": access_token,
         "token_type": "bearer",
-        "user": UserResponse(id=user.id, name=user.name, email=user.email)
+        "user": UserResponse(id=user.id, name=user.name, email=user.email, role=user.role)
     }
 
 
@@ -421,8 +434,8 @@ def health_check(db: Session = Depends(get_db)):
 # Events routes
 @app.get("/api/events", response_model=list[EventListItem])
 def get_events(db: Session = Depends(get_db)):
-    """Get list of all events"""
-    events = db.query(Event).order_by(Event.starts_at.asc()).all()
+    """Get list of all published events"""
+    events = db.query(Event).filter(Event.is_published == 1).order_by(Event.starts_at.asc()).all()
     return events
 
 
@@ -446,7 +459,7 @@ def search_events(
             detail=rate_limit_message
         )
     
-    query = db.query(Event)
+    query = db.query(Event).filter(Event.is_published == 1)
     
     # Text search across name, description, and location (case-insensitive)
     if q:
@@ -504,8 +517,8 @@ def search_events(
 
 @app.get("/api/events/{event_id}", response_model=EventDetail)
 def get_event_detail(event_id: int, db: Session = Depends(get_db)):
-    """Get event details with ticket types"""
-    event = db.query(Event).filter(Event.id == event_id).first()
+    """Get event details with ticket types (only published events)"""
+    event = db.query(Event).filter(Event.id == event_id, Event.is_published == 1).first()
     if not event:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -514,16 +527,21 @@ def get_event_detail(event_id: int, db: Session = Depends(get_db)):
     
     ticket_types = db.query(TicketType).filter(TicketType.event_id == event_id).all()
     
+    # Ensure UTC datetimes for response
+    starts_at_utc = ensure_utc(event.starts_at) if event.starts_at else None
+    ends_at_utc = ensure_utc(event.ends_at) if event.ends_at else None
     return EventDetail(
         id=event.id,
         name=event.name,
         description=event.description,
         image_url=event.image_url,
         location=event.location,
-        starts_at=event.starts_at,
-        ends_at=event.ends_at,
+        starts_at=starts_at_utc,
+        ends_at=ends_at_utc,
         category=event.category,
         tags=event.tags,
+        organizer_id=event.organizer_id,
+        is_published=bool(event.is_published) if event.is_published is not None else True,
         ticket_types=[
             TicketTypeInfo(
                 id=tt.id,
@@ -537,62 +555,6 @@ def get_event_detail(event_id: int, db: Session = Depends(get_db)):
     )
 
 
-@app.get("/api/external/events")
-def get_external_events(
-    city: Optional[str] = Query(None, description="Filter by city"),
-    q: Optional[str] = Query(None, description="Search keyword"),
-    size: int = Query(24, ge=1, le=200, description="Number of events to return"),
-    db: Session = Depends(get_db)
-):
-    """
-    Get events from external sources (Ticketmaster) or fallback to local DB
-    Public endpoint, no auth required
-    """
-    # Try Ticketmaster first if API key is present
-    tm_events = fetch_ticketmaster_events(city=city, keyword=q, size=size)
-    
-    if tm_events:
-        return tm_events
-    
-    # Fallback to local DB events
-    query = db.query(Event).filter(Event.starts_at >= datetime.utcnow())
-    
-    if q:
-        search_term = f"%{q}%"
-        query = query.filter(
-            or_(
-                Event.name.ilike(search_term),
-                Event.description.ilike(search_term),
-                Event.location.ilike(search_term)
-            )
-        )
-    
-    if city:
-        city_term = f"%{city}%"
-        query = query.filter(Event.location.ilike(city_term))
-    
-    events = query.order_by(Event.starts_at.asc()).limit(size).all()
-    
-    # Map to same format as Ticketmaster events
-    result = []
-    for event in events:
-        # Ensure image_url exists, use category placeholder if missing
-        image_url = event.image_url
-        if not image_url:
-            image_url = get_category_image(event.category)
-        
-        result.append({
-            "source": "local",
-            "external_id": str(event.id),  # Use DB id for local events
-            "name": event.name,
-            "image_url": image_url,
-            "location": event.location or "Location TBD",
-            "starts_at": event.starts_at.isoformat() if event.starts_at else None,
-            "url": None,
-            "category": event.category or "General"
-        })
-    
-    return result
 
 
 # Helper functions for pricing and promo codes
@@ -858,26 +820,27 @@ def checkout(
             detail=f"You have reached the maximum ticket limit ({current_count} tickets) for this event"
         )
     
-    # Validate promo code
-    promo, promo_error = validate_promo_code(
-        request.promo_code, request.event_id, request.ticket_type_name, db
-    )
-    
-    if request.promo_code and promo_error:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=promo_error
-        )
-    
     # Calculate pricing
     ticket_price_cents = ticket_type.price_cents
     discount_cents = 0
     
-    if promo:
-        discount_cents = calculate_discount(promo, ticket_price_cents)
-        # Increment promo code used_count
-        promo.used_count += 1
-        db.commit()
+    # Validate and apply promo code if provided
+    if request.promo_code:
+        ok, msg, discount, new_total = validate_promo(
+            db,
+            code=request.promo_code,
+            user_id=current_user.id,
+            event_id=request.event_id,
+            ticket_type=request.ticket_type_name,
+            qty=1,  # Single ticket per checkout
+            unit_price_cents=ticket_price_cents,
+        )
+        if not ok:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=msg
+            )
+        discount_cents = discount
     
     total_cents = ticket_price_cents - discount_cents
     
@@ -898,12 +861,17 @@ def checkout(
         ticket_price_cents=ticket_price_cents,
         discount_cents=discount_cents,
         total_cents=total_cents,
-        promo_code=promo.code if promo else None,
+        promo_code=request.promo_code if request.promo_code else None,
         payment_status='demo_paid'
     )
     db.add(order)
     db.commit()
     db.refresh(order)
+    
+    # Redeem promo code after order is successfully created
+    if request.promo_code:
+        redeem_promo(db, promo_code=request.promo_code, user_id=current_user.id, order_id=order.id)
+        db.commit()
     
     response = CheckoutResponse(
         ok=True,
@@ -1107,10 +1075,11 @@ def create_event(
         description=event_data.description,
         image_url=event_data.image_url,
         location=event_data.location,
-        starts_at=event_data.starts_at,
-        ends_at=event_data.ends_at,
+        starts_at=ensure_utc(event_data.starts_at) if event_data.starts_at else None,
+        ends_at=ensure_utc(event_data.ends_at) if event_data.ends_at else None,
         category=event_data.category,
-        tags=event_data.tags
+        tags=event_data.tags,
+        is_published=1 if event_data.is_published else 0
     )
     db.add(event)
     db.commit()
@@ -1126,6 +1095,8 @@ def create_event(
         ends_at=event.ends_at,
         category=event.category,
         tags=event.tags,
+        organizer_id=event.organizer_id,
+        is_published=bool(event.is_published) if event.is_published is not None else True,
         ticket_types=[]
     )
 
@@ -1155,9 +1126,9 @@ def update_event(
     if event_data.location is not None:
         event.location = event_data.location
     if event_data.starts_at is not None:
-        event.starts_at = event_data.starts_at
+        event.starts_at = ensure_utc(event_data.starts_at)
     if event_data.ends_at is not None:
-        event.ends_at = event_data.ends_at
+        event.ends_at = ensure_utc(event_data.ends_at)
     if event_data.category is not None:
         event.category = event_data.category
     if event_data.tags is not None:
@@ -1179,6 +1150,8 @@ def update_event(
         ends_at=event.ends_at,
         category=event.category,
         tags=event.tags,
+        organizer_id=event.organizer_id,
+        is_published=bool(event.is_published) if event.is_published is not None else True,
         ticket_types=[
             TicketTypeInfo(
                 id=tt.id,

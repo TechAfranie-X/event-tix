@@ -3,16 +3,17 @@
 __pycache__/
 *.pyc
 
-# FastAPI / database
-event_tix.db
-*.sqlite*
-*.db
-
-# Environment files (secrets)
-event_tix/.env
-web/.env
-
-# Frontend build/cache
+# Node
 web/node_modules/
 web/dist/
-web/.vite/
+
+# Local DB & logs
+event_tix.db
+*.sqlite
+*.sqlite3
+event_tix/logs/
+
+# Env/secrets
+.env
+event_tix/.env
+web/.env

@@ -3,6 +3,7 @@ import { useParams, Link, useNavigate } from 'react-router-dom';
 import { getJson, postJson } from '../lib/api';
 import Toast from '../components/Toast';
 import { getToken } from '../lib/auth';
+import { formatDateTime } from '../lib/dates';
 
 // Category-based Unsplash placeholders
 const CATEGORY_IMAGES: Record<string, string> = {
@@ -54,15 +55,14 @@ export default function EventDetailPage() {
   const [error, setError] = useState<string | null>(null);
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' | 'info' } | null>(null);
   const [promoCode, setPromoCode] = useState('');
-  const [quote, setQuote] = useState<{
-    ticket_price_cents: number;
+  const [appliedPromo, setAppliedPromo] = useState<{
+    code: string;
     discount_cents: number;
-    total_cents: number;
-    promo_applied: { code: string; type: string; amount: number } | null;
   } | null>(null);
   const [promoError, setPromoError] = useState<string | null>(null);
   const [applyingPromo, setApplyingPromo] = useState(false);
   const [purchasing, setPurchasing] = useState<string | null>(null);
+  const [selectedTicketType, setSelectedTicketType] = useState<string | null>(null);
 
   useEffect(() => {
     const fetchEvent = async () => {
@@ -97,14 +97,7 @@ export default function EventDetailPage() {
 
   const formatDate = (dateString: string | null) => {
     if (!dateString) return 'Date TBA';
-    const date = new Date(dateString);
-    return date.toLocaleString('en-US', {
-      month: 'long',
-      day: 'numeric',
-      year: 'numeric',
-      hour: 'numeric',
-      minute: '2-digit',
-    });
+    return formatDateTime(dateString);
   };
 
   const formatPrice = (cents: number) => {
@@ -114,7 +107,25 @@ export default function EventDetailPage() {
   const handleApplyPromo = async (ticketTypeName?: string) => {
     if (!promoCode.trim()) {
       setPromoError(null);
-      setQuote(null);
+      setAppliedPromo(null);
+      return;
+    }
+
+    // Use provided ticket type, or selected ticket type, or default to VIP if available, else Regular
+    if (!ticketTypeName) {
+      ticketTypeName = selectedTicketType || (event ? (event.ticket_types.find(tt => tt.name === 'VIP') ? 'VIP' : 'Regular') : null);
+    }
+    
+    if (!ticketTypeName || !event) {
+      setPromoError('Please select a ticket type first');
+      setAppliedPromo(null);
+      return;
+    }
+
+    const ticketType = event.ticket_types.find(tt => tt.name === ticketTypeName);
+    if (!ticketType) {
+      setPromoError('Invalid ticket type');
+      setAppliedPromo(null);
       return;
     }
 
@@ -122,34 +133,32 @@ export default function EventDetailPage() {
     setPromoError(null);
 
     try {
-      // Use provided ticket type, or default to VIP if available, else Regular
-      if (!ticketTypeName && event) {
-        const vipType = event.ticket_types.find(tt => tt.name === 'VIP');
-        ticketTypeName = vipType ? 'VIP' : 'Regular';
-      }
-      
-      if (!ticketTypeName) {
-        setPromoError('Please select a ticket type first');
-        setApplyingPromo(false);
-        return;
-      }
-
       const response = await postJson<{
-        ok: boolean;
-        ticket_price_cents: number;
+        valid: boolean;
+        message: string;
         discount_cents: number;
-        total_cents: number;
-        promo_applied: { code: string; type: string; amount: number } | null;
-      }>('/api/quote', {
+        new_total_cents: number;
+      }>('/api/promos/validate', {
+        code: promoCode.trim(),
         event_id: eventId,
-        ticket_type_name: ticketTypeName,
-        promo_code: promoCode.trim() || undefined,
+        ticket_type: ticketTypeName,
+        qty: 1,
+        unit_price_cents: ticketType.price_cents,
       });
 
-      setQuote(response);
+      if (response.valid) {
+        setAppliedPromo({
+          code: promoCode.trim(),
+          discount_cents: response.discount_cents,
+        });
+        setPromoError(null);
+      } else {
+        setPromoError(response.message || 'Invalid promo code');
+        setAppliedPromo(null);
+      }
     } catch (err) {
       setPromoError(err instanceof Error ? err.message : 'Invalid promo code');
-      setQuote(null);
+      setAppliedPromo(null);
     } finally {
       setApplyingPromo(false);
     }
@@ -162,11 +171,13 @@ export default function EventDetailPage() {
       return;
     }
 
+    setSelectedTicketType(ticketTypeName);
+
     // If promo code is entered but not yet validated, validate it first
-    if (promoCode.trim() && !quote) {
+    if (promoCode.trim() && !appliedPromo) {
       await handleApplyPromo(ticketTypeName);
       // If validation failed, don't proceed
-      if (promoError) {
+      if (promoError || !appliedPromo) {
         return;
       }
     }
@@ -181,7 +192,7 @@ export default function EventDetailPage() {
       }>('/api/checkout', {
         event_id: eventId,
         ticket_type_name: ticketTypeName,
-        promo_code: promoCode.trim() || undefined,
+        promo_code: appliedPromo?.code || undefined,
       });
 
       setToast({ 
@@ -201,9 +212,9 @@ export default function EventDetailPage() {
         console.error('Failed to send receipt email:', err);
       }
       
-      // Clear promo code and quote
+      // Clear promo code and applied promo
       setPromoCode('');
-      setQuote(null);
+      setAppliedPromo(null);
       setPromoError(null);
       
       // Refresh availability
@@ -215,10 +226,17 @@ export default function EventDetailPage() {
         navigate('/orders');
       }, 2000);
     } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Failed to purchase ticket';
       setToast({
-        message: err instanceof Error ? err.message : 'Failed to purchase ticket',
+        message: errorMessage,
         type: 'error'
       });
+      // If server rejects at order time (race condition/limit), clear promo state
+      if (errorMessage.toLowerCase().includes('promo') || errorMessage.toLowerCase().includes('discount')) {
+        setAppliedPromo(null);
+        setPromoCode('');
+        setPromoError(errorMessage);
+      }
     } finally {
       setPurchasing(null);
     }
@@ -337,7 +355,7 @@ export default function EventDetailPage() {
             <h2>Purchase Tickets</h2>
             <div style={{ marginBottom: '1.5rem' }}>
               <label htmlFor="promo-code" style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '500' }}>
-                Promo Code (optional)
+                Have a promo code?
               </label>
               <div style={{ display: 'flex', gap: '0.5rem' }}>
                 <input
@@ -345,13 +363,20 @@ export default function EventDetailPage() {
                   type="text"
                   placeholder="Enter promo code"
                   value={promoCode}
-                  onChange={(e) => setPromoCode(e.target.value.toUpperCase())}
+                  onChange={(e) => {
+                    setPromoCode(e.target.value.toUpperCase());
+                    // Clear applied promo when user types
+                    if (appliedPromo) {
+                      setAppliedPromo(null);
+                      setPromoError(null);
+                    }
+                  }}
                   style={{ flex: 1, padding: '0.5rem', border: '1px solid #ddd', borderRadius: '4px' }}
                 />
                 <button
                   className="btn btn-secondary"
                   onClick={() => handleApplyPromo()}
-                  disabled={applyingPromo}
+                  disabled={applyingPromo || !promoCode.trim()}
                 >
                   {applyingPromo ? 'Applying...' : 'Apply'}
                 </button>
@@ -359,43 +384,36 @@ export default function EventDetailPage() {
               {promoError && (
                 <p style={{ color: '#c33', marginTop: '0.5rem', fontSize: '0.9rem' }}>{promoError}</p>
               )}
-              {quote && (
-                <div style={{ marginTop: '1rem', padding: '1rem', background: '#f5f5f5', borderRadius: '4px' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
-                    <span>Ticket Price:</span>
-                    <span>{formatPrice(quote.ticket_price_cents)}</span>
-                  </div>
-                  {quote.discount_cents > 0 && (
-                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem', color: '#28a745' }}>
-                      <span>Discount:</span>
-                      <span>-{formatPrice(quote.discount_cents)}</span>
-                    </div>
-                  )}
-                  <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 'bold', fontSize: '1.1rem', paddingTop: '0.5rem', borderTop: '1px solid #ddd' }}>
-                    <span>Total:</span>
-                    <span>{formatPrice(quote.total_cents)}</span>
-                  </div>
+              {appliedPromo && appliedPromo.discount_cents > 0 && (
+                <div style={{ marginTop: '1rem', padding: '1rem', background: '#e8f5e9', borderRadius: '4px', border: '1px solid #4caf50' }}>
+                  <p style={{ color: '#2e7d32', fontWeight: '500', margin: 0 }}>
+                    Promo applied: -{formatPrice(appliedPromo.discount_cents)}
+                  </p>
                 </div>
               )}
             </div>
             <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
               {vipType && (
-                <button
-                  className="btn btn-primary"
-                  onClick={() => handlePurchase('VIP')}
-                  disabled={purchasing}
-                >
-                  {purchasing === 'VIP' ? 'Processing...' : `Purchase VIP Ticket`}
-                </button>
+                <div>
+                  <button
+                    className="btn btn-primary"
+                    onClick={() => handlePurchase('VIP')}
+                    disabled={purchasing !== null}
+                  >
+                    {purchasing === 'VIP' ? 'Processing...' : `Purchase VIP Ticket ${appliedPromo && appliedPromo.discount_cents > 0 ? `(${formatPrice(vipType.price_cents - appliedPromo.discount_cents)})` : `(${formatPrice(vipType.price_cents)})`}`}
+                  </button>
+                </div>
               )}
               {regularType && (
-                <button
-                  className="btn btn-primary"
-                  onClick={() => handlePurchase('Regular')}
-                  disabled={purchasing}
-                >
-                  {purchasing === 'Regular' ? 'Processing...' : `Purchase Regular Ticket`}
-                </button>
+                <div>
+                  <button
+                    className="btn btn-primary"
+                    onClick={() => handlePurchase('Regular')}
+                    disabled={purchasing !== null}
+                  >
+                    {purchasing === 'Regular' ? 'Processing...' : `Purchase Regular Ticket ${appliedPromo && appliedPromo.discount_cents > 0 ? `(${formatPrice(regularType.price_cents - appliedPromo.discount_cents)})` : `(${formatPrice(regularType.price_cents)})`}`}
+                  </button>
+                </div>
               )}
             </div>
           </div>

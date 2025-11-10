@@ -223,5 +223,12 @@ The system runs a background processor that:
 
 ## License
 
-MIT
+MITnt 
+<!-- Run the backend with this command -->
+.\.venv\Scripts\Activate.ps1
+python -m uvicorn event_tix.app:app --reload --port 8000
+
+<!-- Run the frontend with this command -->
+cd C:\Users\afran\Desktop\event\web
+npm run dev
 

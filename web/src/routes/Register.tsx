@@ -1,14 +1,14 @@
 import { useState, FormEvent } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 import { postJson } from '../lib/api';
-import { setAuth, User } from '../lib/auth';
+import { User } from '../lib/auth';
 import Toast from '../components/Toast';
 
 export default function Register() {
-  const navigate = useNavigate();
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [isOrganizer, setIsOrganizer] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -18,7 +18,11 @@ export default function Register() {
     setError(null);
 
     try {
-      await postJson<User>('/api/auth/register', { name, email, password });
+      const payload: any = { name, email, password };
+      if (isOrganizer) {
+        payload.role = 'organizer';
+      }
+      await postJson<User>('/api/auth/register', payload);
 
       // Auto-login after registration
       const loginResponse = await postJson<{
@@ -26,8 +30,12 @@ export default function Register() {
         user: User;
       }>('/api/auth/login', { email, password });
 
-      setAuth(loginResponse.access_token, loginResponse.user);
-      navigate('/');
+      localStorage.setItem('token', loginResponse.access_token);
+      localStorage.setItem('user', JSON.stringify(loginResponse.user));
+      // if they're organizer/admin, send them to organizer dashboard by default
+      const u = loginResponse.user || {};
+      const fallback = (u.role === 'organizer' || u.role === 'admin') ? '/organizer/events' : '/';
+      window.location.href = fallback;
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Registration failed');
     } finally {
@@ -69,6 +77,16 @@ export default function Register() {
               onChange={(e) => setPassword(e.target.value)}
               required
             />
+          </div>
+          <div className="form-group">
+            <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              <input
+                type="checkbox"
+                checked={isOrganizer}
+                onChange={(e) => setIsOrganizer(e.target.checked)}
+              />
+              <span>I'm an organizer</span>
+            </label>
           </div>
           <button type="submit" className="btn btn-primary" disabled={loading}>
             {loading ? 'Registering...' : 'Register'}

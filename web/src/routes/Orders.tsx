@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { getJson, postJson } from '../lib/api';
 import Toast from '../components/Toast';
+import { formatDateTime } from '../lib/dates';
 import { getUser } from '../lib/auth';
 
 interface ToastState {
@@ -136,7 +137,7 @@ export default function Orders() {
   };
 
   const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleString();
+    return formatDateTime(dateString);
   };
 
   const handleCancelOrder = async (order: Order) => {

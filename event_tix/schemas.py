@@ -11,10 +11,18 @@ class UserRegister(BaseModel):
     password: str
 
 
+class UserCreate(BaseModel):
+    name: str
+    email: EmailStr
+    password: str
+    role: Optional[str] = "user"
+
+
 class UserResponse(BaseModel):
     id: int
     name: str
     email: str
+    role: str
 
     class Config:
         from_attributes = True
@@ -56,6 +64,23 @@ class TicketTypeInfo(BaseModel):
         from_attributes = True
 
 
+class EventOut(BaseModel):
+    id: int
+    name: str
+    description: Optional[str] = None
+    image_url: Optional[str] = None
+    location: Optional[str] = None
+    starts_at: Optional[datetime] = None
+    ends_at: Optional[datetime] = None
+    category: Optional[str] = None
+    tags: Optional[str] = None
+    organizer_id: Optional[int] = None
+    is_published: bool = True
+
+    class Config:
+        from_attributes = True
+
+
 class EventDetail(BaseModel):
     id: int
     name: str
@@ -66,6 +91,8 @@ class EventDetail(BaseModel):
     ends_at: Optional[datetime] = None
     category: Optional[str] = None
     tags: Optional[str] = None
+    organizer_id: Optional[int] = None
+    is_published: bool = True
     ticket_types: list[TicketTypeInfo] = []
 
     class Config:
@@ -203,13 +230,17 @@ class AdminToken(BaseModel):
 
 class EventCreate(BaseModel):
     name: str
-    description: Optional[str] = None
+    description: Optional[str] = ""
     image_url: Optional[str] = None
-    location: Optional[str] = None
+    location: Optional[str] = ""
     starts_at: Optional[datetime] = None
     ends_at: Optional[datetime] = None
-    category: Optional[str] = None
-    tags: Optional[str] = None
+    category: Optional[str] = "General"
+    is_published: bool = True
+    vip_capacity: Optional[int] = 0
+    vip_price_cents: Optional[int] = 0
+    reg_capacity: Optional[int] = 0
+    reg_price_cents: Optional[int] = 0
 
 
 class EventUpdate(BaseModel):

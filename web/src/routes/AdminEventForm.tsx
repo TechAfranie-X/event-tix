@@ -3,6 +3,7 @@ import { useNavigate, useParams, Link } from 'react-router-dom';
 import { adminPostJson, adminPutJson } from '../lib/adminApi';
 import { getJson } from '../lib/api';
 import Toast from '../components/Toast';
+import { localToUtcIso } from '../lib/dates';
 
 interface EventData {
   name: string;
@@ -69,8 +70,8 @@ export default function AdminEventForm() {
     try {
       const payload: any = {
         ...formData,
-        starts_at: formData.starts_at ? new Date(formData.starts_at).toISOString() : null,
-        ends_at: formData.ends_at ? new Date(formData.ends_at).toISOString() : null,
+        starts_at: localToUtcIso(formData.starts_at),
+        ends_at: localToUtcIso(formData.ends_at),
       };
       // Remove empty strings
       Object.keys(payload).forEach((key) => {

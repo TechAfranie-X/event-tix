@@ -5,6 +5,7 @@ export interface User {
   id: number;
   name: string;
   email: string;
+  role?: string;
 }
 
 export function getToken(): string | null {
@@ -37,4 +38,9 @@ export function getUser<T = any>(): T | null {
 // 👇 Compatibility export for older code that imported this
 export function isAuthenticated(): boolean {
   return !!getToken();
+}
+
+export function isOrganizer(): boolean {
+  const u = getUser<User>();
+  return !!u && (u.role === 'organizer' || u.role === 'admin');
 }

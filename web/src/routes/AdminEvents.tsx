@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { adminGetJson, adminPostJson, adminPutJson } from '../lib/adminApi';
 import { getJson } from '../lib/api';
 import Toast from '../components/Toast';
+import { formatDateTime } from '../lib/dates';
 
 interface Event {
   id: number;
@@ -76,7 +77,7 @@ export default function AdminEvents() {
                   <td style={{ padding: '0.75rem' }}>{event.name}</td>
                   <td style={{ padding: '0.75rem' }}>{event.location || '-'}</td>
                   <td style={{ padding: '0.75rem' }}>
-                    {event.starts_at ? new Date(event.starts_at).toLocaleString() : '-'}
+                    {event.starts_at ? formatDateTime(event.starts_at) : '-'}
                   </td>
                   <td style={{ padding: '0.75rem' }}>
                     <Link to={`/admin/events/${event.id}/edit`} className="btn btn-sm">
